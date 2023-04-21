@@ -6,7 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
-	"strings"
+	"regexp"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -22,9 +22,10 @@ type GsmcCommand struct {
 	CommandAndArgs string
 	ExpectRegExp   string
 	UserInput      string
+	TimeoutSeconds int
 }
 
-func Connect(addr, user, password string) (*GsmcConnection, error) {
+func NewConnection(addr, user, password string) (*GsmcConnection, error) {
 	sshConfig := &ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{
@@ -42,7 +43,10 @@ func Connect(addr, user, password string) (*GsmcConnection, error) {
 
 }
 
-func (conn *GsmcConnection) SendCommand() ([]byte, error) {
+func (conn *GsmcConnection) ExecCommands(cmds []GsmcCommand) ([]byte, error) {
+	cmdCount := len(cmds)
+	gIndex := 0
+
 	session, err := conn.NewSession()
 	if err != nil {
 		log.Fatal(err)
@@ -80,6 +84,7 @@ func (conn *GsmcConnection) SendCommand() ([]byte, error) {
 		for {
 			b, err := r.ReadByte()
 			if err != nil {
+				fmt.Println("err:", err)
 				break
 			}
 
@@ -93,12 +98,17 @@ func (conn *GsmcConnection) SendCommand() ([]byte, error) {
 
 			line += string(b)
 
-			if strings.HasSuffix(line, "Password:") {
-				_, err = in.Write([]byte("ansible\n"))
-				if err != nil {
-					break
+			regPattern := cmds[gIndex].ExpectRegExp
+			if regPattern != "" {
+				regExp := regexp.MustCompile(regPattern)
+				if regExp.MatchString(line) {
+					_, err = in.Write([]byte(cmds[gIndex].UserInput + "\n"))
+					if err != nil {
+						break
+					}
 				}
 			}
+
 		}
 	}(in, out, &output)
 
@@ -106,11 +116,11 @@ func (conn *GsmcConnection) SendCommand() ([]byte, error) {
 	if err != nil {
 		return []byte{}, err
 	}
-	in.Write([]byte("su - root\n"))
-	time.Sleep(2 * time.Second)
 
-	in.Write([]byte("pwd\n"))
-	time.Sleep(2 * time.Second)
+	for gIndex = 0; gIndex < cmdCount; gIndex++ {
+		in.Write([]byte(cmds[gIndex].CommandAndArgs + "\n"))
+		time.Sleep(time.Duration(cmds[gIndex].TimeoutSeconds) * time.Second)
+	}
 
 	return output, nil
 }
