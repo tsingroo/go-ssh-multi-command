@@ -3,6 +3,14 @@ package main
 import gsmc "github.com/tsingroo/go-ssh-multi-command"
 
 func main() {
+
+	conn, err := gsmc.NewConnection("192.168.1.1:22", "abcd", "abcd")
+	if err != nil {
+		panic(err)
+	}
+
+	defer conn.Close()
+
 	multiCmds := []gsmc.GsmcCommand{
 		{
 			CommandAndArgs: "su - root",
@@ -17,18 +25,12 @@ func main() {
 			TimeoutSeconds: 1,
 		},
 		{
-			CommandAndArgs: "which nginx",
+			CommandAndArgs: "whoami",
 			ExpectRegExp:   "",
 			UserInput:      "",
 			TimeoutSeconds: 1,
 		},
 	}
-	conn, err := gsmc.NewConnection("192.168.2.244:22", "gmsnmp", "gmsnmp")
-	if err != nil {
-		panic(err)
-	}
-
-	defer conn.Close()
 
 	_, err = conn.ExecCommands(multiCmds)
 	if err != nil {

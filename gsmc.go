@@ -91,7 +91,7 @@ func (conn *GsmcConnection) ExecCommands(cmds []GsmcCommand) ([]byte, error) {
 			*output = append(*output, b)
 
 			if b == byte('\n') {
-				fmt.Println(line)
+				fmt.Println("Command Resp:", line)
 				line = ""
 				continue
 			}
@@ -103,6 +103,7 @@ func (conn *GsmcConnection) ExecCommands(cmds []GsmcCommand) ([]byte, error) {
 				regExp := regexp.MustCompile(regPattern)
 				if regExp.MatchString(line) {
 					_, err = in.Write([]byte(cmds[gIndex].UserInput + "\n"))
+					fmt.Println("Analog Input:", cmds[gIndex].UserInput)
 					if err != nil {
 						break
 					}
@@ -119,6 +120,7 @@ func (conn *GsmcConnection) ExecCommands(cmds []GsmcCommand) ([]byte, error) {
 
 	for gIndex = 0; gIndex < cmdCount; gIndex++ {
 		in.Write([]byte(cmds[gIndex].CommandAndArgs + "\n"))
+		fmt.Println("Send Command:", cmds[gIndex].CommandAndArgs)
 		time.Sleep(time.Duration(cmds[gIndex].TimeoutSeconds) * time.Second)
 	}
 
