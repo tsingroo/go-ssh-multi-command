@@ -23,7 +23,6 @@ type GsmcCommand struct {
 	CommandAndArgs string
 	ExpectRegExp   string
 	UserInput      string
-	TimeoutSeconds int
 }
 
 func NewConnection(addr, user, password string) (*GsmcConnection, error) {

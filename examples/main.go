@@ -20,19 +20,12 @@ func main() {
 			CommandAndArgs: "su - root",
 			ExpectRegExp:   ".*Password:$", // 正则含义：以任意字符开头，以Password:结尾
 			UserInput:      "ansible",
-			TimeoutSeconds: 1,
 		},
 		{
 			CommandAndArgs: "pwd",
-			ExpectRegExp:   "",
-			UserInput:      "",
-			TimeoutSeconds: 1,
 		},
 		{
 			CommandAndArgs: "whoami",
-			ExpectRegExp:   "",
-			UserInput:      "",
-			TimeoutSeconds: 1,
 		},
 	}
 
