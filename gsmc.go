@@ -2,12 +2,13 @@ package gsmc
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"regexp"
-	"time"
+	"strings"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -45,7 +46,6 @@ func NewConnection(addr, user, password string) (*GsmcConnection, error) {
 
 func (conn *GsmcConnection) ExecCommands(cmds []GsmcCommand) ([]byte, error) {
 	cmdCount := len(cmds)
-	gIndex := 0
 
 	session, err := conn.NewSession()
 	if err != nil {
@@ -76,53 +76,111 @@ func (conn *GsmcConnection) ExecCommands(cmds []GsmcCommand) ([]byte, error) {
 
 	var output []byte
 
-	go func(in io.WriteCloser, out io.Reader, output *[]byte) {
-		var (
-			line string
-			r    = bufio.NewReader(out)
-		)
-		for {
-			b, err := r.ReadByte()
-			if err != nil {
-				fmt.Println("err:", err)
-				break
-			}
-
-			*output = append(*output, b)
-
-			if b == byte('\n') {
-				fmt.Println("Command Resp:", line)
-				line = ""
-				continue
-			}
-
-			line += string(b)
-
-			regPattern := cmds[gIndex].ExpectRegExp
-			if regPattern != "" {
-				regExp := regexp.MustCompile(regPattern)
-				if regExp.MatchString(line) {
-					_, err = in.Write([]byte(cmds[gIndex].UserInput + "\n"))
-					fmt.Println("Analog Input:", cmds[gIndex].UserInput)
-					if err != nil {
-						break
-					}
-				}
-			}
-
-		}
-	}(in, out, &output)
-
 	err = session.Shell()
 	if err != nil {
 		return []byte{}, err
 	}
 
-	for gIndex = 0; gIndex < cmdCount; gIndex++ {
-		in.Write([]byte(cmds[gIndex].CommandAndArgs + "\n"))
-		fmt.Println("Send Command:", cmds[gIndex].CommandAndArgs)
-		time.Sleep(time.Duration(cmds[gIndex].TimeoutSeconds) * time.Second)
+	clearLoginMsg(in, out, &output)
+
+	for cmdIndex := 0; cmdIndex < cmdCount; cmdIndex++ {
+		cmdStr := cmds[cmdIndex].CommandAndArgs
+		if !strings.Contains(cmdStr, "su -") {
+			cmdStr = cmdStr + ";echo 'exit code:'$?\n"
+		} else {
+			cmdStr = cmdStr + "\n"
+		}
+		in.Write([]byte(cmdStr))
+		fmt.Print(cmdStr)
+		cmds[cmdIndex].CommandAndArgs = cmdStr
+		err := HandleStdInStdoutStdErr(in, out, &output, cmds[cmdIndex])
+		if err != nil {
+			return []byte{}, err
+		}
 	}
 
 	return output, nil
+}
+
+func HandleStdInStdoutStdErr(stdIn io.WriteCloser, stdOut io.Reader, output *[]byte, cmd GsmcCommand) error {
+	var (
+		line  string
+		r           = bufio.NewReader(stdOut)
+		rtErr error = nil
+	)
+	for {
+		b, err := r.ReadByte()
+		if err != nil {
+			if err != io.EOF {
+				rtErr = err
+			}
+			break
+		}
+
+		*output = append(*output, b)
+
+		if b == byte('\n') {
+			fmt.Println(line)
+			line = ""
+			continue
+		}
+
+		line += string(b)
+		if isCmdComplete(line) {
+			fmt.Print(line)
+			break
+		}
+
+		if strings.Contains(line, "Authentication failure") {
+			rtErr = errors.New("authentication failure")
+			break
+		}
+		exitCodeRegParrern := regexp.MustCompile("exit code:[0-9]+")
+		if exitCodeRegParrern.MatchString(line) {
+			if !strings.Contains(line, "exit code:0") {
+				rtErr = errors.New(cmd.CommandAndArgs + " 命令执行出错")
+				break
+			} else {
+				break
+			}
+		}
+
+		regPattern := cmd.ExpectRegExp
+		if regPattern != "" {
+			regExp := regexp.MustCompile(regPattern)
+			if regExp.MatchString(line) {
+				_, err = stdIn.Write([]byte(cmd.UserInput + "\n"))
+				fmt.Print(cmd.UserInput + "\n")
+				if err != nil {
+					rtErr = err
+					break
+				}
+			}
+		}
+	}
+
+	return rtErr
+}
+
+// clearLoginMsg 清除ssh初次登录产生的信息
+func clearLoginMsg(stdIn io.WriteCloser, stdOut io.Reader, output *[]byte) {
+	HandleStdInStdoutStdErr(stdIn, stdOut, output, GsmcCommand{})
+}
+
+// isCmdComplete 判断命令是否执行完毕
+func isCmdComplete(line string) bool {
+	// 判断条件：是否重新出现命令提示符。root用户的命令提示符为#结尾，普通用户的命令提示符为$结尾
+	if strings.HasSuffix(line, "~#") {
+		return true
+	}
+	if strings.HasSuffix(line, "~]#") {
+		return true
+	}
+	if strings.HasSuffix(line, "~]$") {
+		return true
+	}
+	if line == "$" {
+		return true
+	}
+	return false
 }

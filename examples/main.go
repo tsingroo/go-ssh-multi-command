@@ -1,6 +1,10 @@
 package main
 
-import gsmc "github.com/tsingroo/go-ssh-multi-command"
+import (
+	"fmt"
+
+	gsmc "github.com/tsingroo/go-ssh-multi-command"
+)
 
 func main() {
 
@@ -34,7 +38,7 @@ func main() {
 
 	_, err = conn.ExecCommands(multiCmds)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
 	}
 
 }
