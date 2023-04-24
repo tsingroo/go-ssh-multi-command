@@ -3,7 +3,6 @@ package gsmc
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -90,7 +89,7 @@ func (conn *GsmcConnection) ExecCommands(cmds []GsmcCommand) ([]byte, error) {
 			cmdStr = cmdStr + "\n"
 		}
 		in.Write([]byte(cmdStr))
-		fmt.Print(cmdStr)
+		output = append(output, []byte(cmdStr)...)
 		cmds[cmdIndex].CommandAndArgs = cmdStr
 		err := HandleStdInStdoutStdErr(in, out, &output, cmds[cmdIndex])
 		if err != nil {
@@ -119,14 +118,14 @@ func HandleStdInStdoutStdErr(stdIn io.WriteCloser, stdOut io.Reader, output *[]b
 		*output = append(*output, b)
 
 		if b == byte('\n') {
-			fmt.Println(line)
+			// fmt.Println(line)
 			line = ""
 			continue
 		}
 
 		line += string(b)
 		if isCmdComplete(line) {
-			fmt.Print(line)
+			// fmt.Print(line)
 			break
 		}
 
@@ -137,7 +136,7 @@ func HandleStdInStdoutStdErr(stdIn io.WriteCloser, stdOut io.Reader, output *[]b
 		exitCodeRegParrern := regexp.MustCompile("exit code:[0-9]+")
 		if exitCodeRegParrern.MatchString(line) {
 			if !strings.Contains(line, "exit code:0") {
-				rtErr = errors.New(cmd.CommandAndArgs + " 命令执行出错")
+				rtErr = errors.New(strings.ReplaceAll(cmd.CommandAndArgs, ";echo 'exit code:'$?\n", "") + " 命令执行出错")
 				break
 			} else {
 				break
@@ -149,7 +148,8 @@ func HandleStdInStdoutStdErr(stdIn io.WriteCloser, stdOut io.Reader, output *[]b
 			regExp := regexp.MustCompile(regPattern)
 			if regExp.MatchString(line) {
 				_, err = stdIn.Write([]byte(cmd.UserInput + "\n"))
-				fmt.Print(cmd.UserInput + "\n")
+				// fmt.Print(cmd.UserInput + "\n")
+				*output = append(*output, []byte(cmd.UserInput+"\n")...)
 				if err != nil {
 					rtErr = err
 					break
